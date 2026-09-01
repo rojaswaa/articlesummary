@@ -2,7 +2,7 @@
 
 A web app that helps researchers run systematic literature reviews. It analyzes folders of PDF articles with AI (Google Gemini or local models), extracts bibliographies, searches academic databases, and syncs results with your Zotero library.
 
-# This is a Code Vide Project. It is meant only to run locally.
+# This is a Code Vibe Project. It is meant only to run locally.
 ---
 
 ## Installation Guide (no technical experience needed)
