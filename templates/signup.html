@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign Up — ArticleSummary</title>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  <style>
+    .auth-container { flex: 1; display: flex; justify-content: center; align-items: center; padding: 20px; }
+    .auth-card { background: #161b27; border: 1px solid #1e2a3a; border-radius: 16px; padding: 32px; width: 100%; max-width: 400px; }
+    .auth-title { font-size: 20px; font-weight: 700; color: #f1f5f9; margin-bottom: 24px; text-align: center; }
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+    .form-input { width: 100%; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 10px 14px; color: #e2e8f0; font-size: 14px; outline: none; }
+    .form-input:focus { border-color: #6366f1; }
+    .auth-btn { width: 100%; margin-top: 8px; }
+    .auth-footer { margin-top: 20px; text-align: center; font-size: 13px; color: #64748b; }
+    .auth-link { color: #818cf8; text-decoration: none; font-weight: 600; }
+    .auth-link:hover { text-decoration: underline; }
+    .error-msg { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: #f87171; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+    .helptext { display: block; font-size: 11px; color: #475569; margin-top: 4px; }
+    .helptext ul { list-style: none; padding-left: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="logo">ArticleSummary</span>
+  </header>
+  <div class="auth-container">
+    <div class="auth-card">
+      <h2 class="auth-title">Create Account</h2>
+      {% if form.errors %}
+        <div class="error-msg">Please correct the errors below.</div>
+      {% endif %}
+      <form method="POST">
+        {% csrf_token %}
+        {% for field in form %}
+          <div class="form-group">
+            <label class="form-label">{{ field.label }}</label>
+            <input type="{{ field.field.widget.input_type }}" name="{{ field.html_name }}" class="form-input" required />
+            {% if field.help_text %}
+              <span class="helptext">{{ field.help_text|safe }}</span>
+            {% endif %}
+            {% for error in field.errors %}
+              <div style="color: #f87171; font-size: 11px; margin-top: 4px;">{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+        <button type="submit" class="btn btn-primary auth-btn">Sign Up</button>
+      </form>
+      <div class="auth-footer">
+        Already have an account? <a href="{% url 'login' %}" class="auth-link">Log In</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settings — ArticleSummary</title>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'css/style.css' %}" />
+  <style>
+    .settings-layout { display: flex; flex: 1; overflow: hidden; height: 100%; }
+    .settings-sidebar { width: 240px; border-right: 1px solid #1e2330; padding: 24px 16px; background: #0f1117; }
+    .settings-content { flex: 1; padding: 40px; overflow-y: auto; background: #0a0d12; }
+    .settings-menu { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+    .settings-menu-item {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #94a3b8;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .settings-menu-item:hover { background: #1e2330; color: #e2e8f0; }
+    .settings-menu-item.active { background: #6366f1; color: #fff; }
+    
+    .settings-pane { display: none; max-width: 600px; }
+    .settings-pane.active { display: block; }
+    
+    .settings-header { margin-bottom: 24px; }
+    .settings-title { font-size: 24px; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; }
+    .settings-subtitle { font-size: 14px; color: #64748b; }
+    
+    .form-section { background: #161b27; border: 1px solid #1e2a3a; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+    .form-section-title { font-size: 16px; font-weight: 700; color: #e2e8f0; margin-bottom: 16px; border-bottom: 1px solid #1e2330; padding-bottom: 8px; }
+    
+    .form-group { margin-bottom: 20px; }
+    .form-group:last-child { margin-bottom: 0; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 8px; }
+    
+    .user-info { display: flex; align-items: center; gap: 12px; padding: 12px; background: #161b27; border: 1px solid #1e2a3a; border-radius: 10px; margin-bottom: 24px; }
+    .user-avatar { width: 32px; height: 32px; background: #6366f1; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 14px; }
+    .user-details { flex: 1; min-width: 0; }
+    .username { font-size: 13px; font-weight: 600; color: #e2e8f0; display: block; }
+    .logout-link { font-size: 11px; color: #f87171; text-decoration: none; }
+    .status-indicator { font-size: 11px; margin-top: 4px; display: flex; align-items: center; gap: 5px; }
+    .status-ok { color: #4ade80; }
+    .status-fail { color: #f87171; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .bg-ok { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+    .bg-fail { background: #ef4444; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="logo">ArticleSummary</span>
+    <nav class="header-nav" style="display: flex; align-items: center; gap: 8px;">
+      <a href="/" class="nav-link">📊 Analysis</a>
+      <a href="/search/" class="nav-link">🔎 Search</a>
+      <a href="/references/" class="nav-link">📚 References</a>
+      <a href="/settings" class="nav-link active">⚙ Settings</a>
+    </nav>
+  </header>
+
+  <div class="settings-layout">
+    <aside class="settings-sidebar">
+      <div class="user-info">
+        <div class="user-avatar">{{ request.user.username|slice:":1"|upper }}</div>
+        <div class="user-details">
+          <span class="username">{{ request.user.username }}</span>
+          <a href="{% url 'logout' %}" class="logout-link">Log Out</a>
+        </div>
+      </div>
+      
+      <ul class="settings-menu">
+        <li class="settings-menu-item active" data-pane="general">
+          <span>General</span>
+        </li>
+        <li class="settings-menu-item" data-pane="cloud-ai">
+          <span>Cloud AI (Gemini)</span>
+        </li>
+        <li class="settings-menu-item" data-pane="local-ai">
+          <span>Local AI (Ollama/LMS)</span>
+        </li>
+        <li class="settings-menu-item" data-pane="ocr">
+          <span>OCR Provider</span>
+        </li>
+        <li class="settings-menu-item" data-pane="zotero">
+          <span>Zotero API</span>
+        </li>
+        <li class="settings-menu-item" data-pane="search">
+          <span>Article Search</span>
+        </li>
+      </ul>
+    </aside>
+
+    <main class="settings-content">
+      <form method="POST" action="{% url 'admin_save_ai_config' %}" id="settings-form">
+        {% csrf_token %}
+        
+        <!-- ── General ── -->
+        <div class="settings-pane active" id="pane-general">
+          <div class="settings-header">
+            <h1 class="settings-title">General Settings</h1>
+            <p class="settings-subtitle">Configure your default AI analysis provider and shared parameters.</p>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-group">
+              <label class="form-label">Active AI Provider</label>
+              <div class="provider-cards">
+                <label class="provider-card {% if profile.ai_provider == 'ollama' %}active{% endif %}">
+                  <input type="radio" name="ai_provider" value="ollama" {% if profile.ai_provider == 'ollama' %}checked{% endif %} />
+                  <span class="provider-name">Ollama</span>
+                  <div class="status-indicator {% if conn_status.ollama.available %}status-ok{% else %}status-fail{% endif %}">
+                    <div class="status-dot {% if conn_status.ollama.available %}bg-ok{% else %}bg-fail{% endif %}"></div>
+                    {% if conn_status.ollama.available %}Online{% else %}Offline{% endif %}
+                  </div>
+                </label>
+                <label class="provider-card {% if profile.ai_provider == 'lmstudio' %}active{% endif %}">
+                  <input type="radio" name="ai_provider" value="lmstudio" {% if profile.ai_provider == 'lmstudio' %}checked{% endif %} />
+                  <span class="provider-name">LM Studio</span>
+                  <div class="status-indicator {% if conn_status.lmstudio.available %}status-ok{% else %}status-fail{% endif %}">
+                    <div class="status-dot {% if conn_status.lmstudio.available %}bg-ok{% else %}bg-fail{% endif %}"></div>
+                    {% if conn_status.lmstudio.available %}Online{% else %}Offline{% endif %}
+                  </div>
+                </label>
+                <label class="provider-card {% if profile.ai_provider == 'llama_server' %}active{% endif %}">
+                  <input type="radio" name="ai_provider" value="llama_server" {% if profile.ai_provider == 'llama_server' %}checked{% endif %} />
+                  <span class="provider-name">Llama Server</span>
+                  <!-- Llama server shares same base check as others usually -->
+                </label>
+                <label class="provider-card {% if profile.ai_provider == 'gemini' %}active{% endif %}">
+                  <input type="radio" name="ai_provider" value="gemini" {% if profile.ai_provider == 'gemini' %}checked{% endif %} />
+                  <span class="provider-name">Gemini</span>
+                  <div class="status-indicator {% if conn_status.gemini.available %}status-ok{% else %}status-fail{% endif %}">
+                    <div class="status-dot {% if conn_status.gemini.available %}bg-ok{% else %}bg-fail{% endif %}"></div>
+                    {% if conn_status.gemini.available %}Ready{% else %}Not Ready{% endif %}
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Temperature ({{ profile.temperature }})</label>
+              <input type="range" name="temperature" min="0" max="1" step="0.1" value="{{ profile.temperature }}" class="key-input" style="width: 100%;" oninput="this.previousElementSibling.textContent = 'Temperature ('+this.value+')'" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Max Tokens</label>
+              <input type="number" name="max_tokens" value="{{ profile.max_tokens }}" class="key-input" style="width: 100%;" />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Save General Settings</button>
+        </div>
+
+        <!-- ── Cloud AI ── -->
+        <div class="settings-pane" id="pane-cloud-ai">
+          <div class="settings-header">
+            <h1 class="settings-title">Cloud AI</h1>
+            <p class="settings-subtitle">Manage your Google Gemini API credentials.</p>
+            {% if not conn_status.gemini.available and profile.gemini_api_key %}
+              <div class="error-msg" style="margin-top: 10px;">Connection Failed: {{ conn_status.gemini.error }}</div>
+            {% endif %}
+          </div>
+          
+          <div class="form-section">
+            <div class="form-group">
+              <label class="form-label">Gemini API Key</label>
+              <input type="password" name="gemini_api_key" value="" placeholder="{% if profile.gemini_api_key %}•••••••• (saved — leave blank to keep){% else %}Paste your Gemini API key…{% endif %}" class="key-input" style="width: 100%;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Gemini Model</label>
+              <select name="gemini_model" class="key-input" style="width: 100%;">
+                {% for m in gemini_models %}
+                  <option value="{{ m.key }}" {% if profile.gemini_model == m.key %}selected{% endif %}>{{ m.display_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Save Cloud AI Settings</button>
+        </div>
+
+        <!-- ── Local AI ── -->
+        <div class="settings-pane" id="pane-local-ai">
+          <div class="settings-header">
+            <h1 class="settings-title">Local AI</h1>
+            <p class="settings-subtitle">Configure connections to local Ollama or LM Studio servers.</p>
+            {% if not conn_status.ollama.available and profile.ollama_base_url %}
+               <div style="font-size: 11px; color: #f87171; margin-top: 5px;">Ollama unreachable: {{ conn_status.ollama.error }}</div>
+            {% endif %}
+            {% if not conn_status.lmstudio.available and profile.lmstudio_base_url %}
+               <div style="font-size: 11px; color: #f87171; margin-top: 5px;">LM Studio unreachable: {{ conn_status.lmstudio.error }}</div>
+            {% endif %}
+          </div>
+          
+          <div class="form-section">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+              <div class="form-section-title" style="margin-bottom: 0;">Ollama Configuration</div>
+              <button type="button" id="toggle-ollama-btn" class="btn btn-secondary" style="font-size: 11px; padding: 6px 10px;">
+                <span class="spinner" style="width: 12px; height: 12px; border-width: 2px;"></span>
+                <span class="btn-label">{% if conn_status.ollama.available %}Stop Server{% else %}Start Server{% endif %}</span>
+              </button>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Base URL</label>
+              <input type="text" name="ollama_base_url" value="{{ profile.ollama_base_url }}" class="key-input" style="width: 100%;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Model</label>
+              <select name="ollama_model" class="key-input" style="width: 100%;">
+                {% for m in ollama_models %}
+                  <option value="{{ m.key }}" {% if profile.ollama_model == m.key %}selected{% endif %}>{{ m.display_name }}</option>
+                {% empty %}
+                   <option value="{{ profile.ollama_model }}">{{ profile.ollama_model }} (Current)</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+              <div class="form-section-title" style="margin-bottom: 0;">LM Studio Configuration</div>
+              <button type="button" id="toggle-lmstudio-btn" class="btn btn-secondary" style="font-size: 11px; padding: 6px 10px;">
+                <span class="spinner" style="width: 12px; height: 12px; border-width: 2px;"></span>
+                <span class="btn-label">{% if conn_status.lmstudio.available %}Stop Server{% else %}Start Server{% endif %}</span>
+              </button>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Base URL</label>
+              <input type="text" name="lmstudio_base_url" value="{{ profile.lmstudio_base_url }}" class="key-input" style="width: 100%;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Model</label>
+              <select name="lmstudio_model" class="key-input" style="width: 100%;">
+                {% for m in lmstudio_models %}
+                  <option value="{{ m.key }}" {% if profile.lmstudio_model == m.key %}selected{% endif %}>{{ m.display_name }}</option>
+                {% empty %}
+                   <option value="{{ profile.lmstudio_model }}">{{ profile.lmstudio_model }} (Current)</option>
+                {% endfor %}
+              </select>
+            </div>
+            <!-- Advanced Preloading Parameters -->
+            <div class="form-group-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 16px;">
+              <div class="form-group">
+                <label class="form-label">Context Length (contextLength)</label>
+                <input type="number" name="lmstudio_context_length" value="{{ profile.lmstudio_context_length }}" class="key-input" style="width: 100%;" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Eval Batch Size (evalBatchSize)</label>
+                <input type="number" name="lmstudio_eval_batch_size" value="{{ profile.lmstudio_eval_batch_size }}" class="key-input" style="width: 100%;" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Flash Attention (flashAttention)</label>
+                <select name="lmstudio_flash_attention" class="key-input" style="width: 100%;">
+                  <option value="true" {% if profile.lmstudio_flash_attention %}selected{% endif %}>Enabled</option>
+                  <option value="false" {% if not profile.lmstudio_flash_attention %}selected{% endif %}>Disabled</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Keep Model In Memory (keepModelInMemory)</label>
+                <select name="lmstudio_keep_model_in_memory" class="key-input" style="width: 100%;">
+                  <option value="true" {% if profile.lmstudio_keep_model_in_memory %}selected{% endif %}>Enabled</option>
+                  <option value="false" {% if not profile.lmstudio_keep_model_in_memory %}selected{% endif %}>Disabled</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Try Memory Map (tryMmap)</label>
+                <select name="lmstudio_try_mmap" class="key-input" style="width: 100%;">
+                  <option value="true" {% if profile.lmstudio_try_mmap %}selected{% endif %}>Enabled</option>
+                  <option value="false" {% if not profile.lmstudio_try_mmap %}selected{% endif %}>Disabled</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Number of Experts (numExperts)</label>
+                <input type="number" name="lmstudio_num_experts" value="{{ profile.lmstudio_num_experts }}" class="key-input" style="width: 100%;" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Llama K Cache Quant Type</label>
+                <input type="text" name="lmstudio_llama_k_cache_quant_type" value="{{ profile.lmstudio_llama_k_cache_quant_type }}" class="key-input" style="width: 100%;" placeholder="e.g. false, q4_0, q8_0" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Llama V Cache Quant Type</label>
+                <input type="text" name="lmstudio_llama_v_cache_quant_type" value="{{ profile.lmstudio_llama_v_cache_quant_type }}" class="key-input" style="width: 100%;" placeholder="e.g. false, q4_0, q8_0" />
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Save Local AI Settings</button>
+        </div>
+
+        <!-- ── OCR ── -->
+        <div class="settings-pane" id="pane-ocr">
+          <div class="settings-header">
+            <h1 class="settings-title">OCR Provider</h1>
+            <p class="settings-subtitle">Choose how text is extracted from scanned documents.</p>
+            {% if not conn_status.mistral.available and profile.mistral_api_key and profile.ocr_provider == 'mistral' %}
+               <div class="error-msg" style="margin-top: 10px;">Mistral OCR unreachable: {{ conn_status.mistral.error }}</div>
+            {% endif %}
+          </div>
+          
+          <div class="form-section">
+            <div class="form-group">
+              <label class="form-label">Provider</label>
+              <div class="provider-cards">
+                <label class="provider-card {% if profile.ocr_provider == 'mistral' %}active{% endif %}">
+                  <input type="radio" name="ocr_provider" value="mistral" {% if profile.ocr_provider == 'mistral' %}checked{% endif %} />
+                  <span class="provider-name">Mistral OCR</span>
+                  <div class="status-indicator {% if conn_status.mistral.available %}status-ok{% else %}status-fail{% endif %}">
+                    <div class="status-dot {% if conn_status.mistral.available %}bg-ok{% else %}bg-fail{% endif %}"></div>
+                    {% if conn_status.mistral.available %}Ready{% else %}Not Ready{% endif %}
+                  </div>
+                </label>
+                <label class="provider-card {% if profile.ocr_provider == 'macocr' %}active{% endif %}">
+                  <input type="radio" name="ocr_provider" value="macocr" {% if profile.ocr_provider == 'macocr' %}checked{% endif %} />
+                  <span class="provider-name">macOS Vision</span>
+                </label>
+                <label class="provider-card {% if profile.ocr_provider == 'pytesseract' %}active{% endif %}">
+                   <input type="radio" name="ocr_provider" value="pytesseract" {% if profile.ocr_provider == 'pytesseract' %}checked{% endif %} />
+                   <span class="provider-name">Tesseract</span>
+                </label>
+              </div>
+            </div>
+            <div class="form-group" id="mistral-key-group" style="{% if profile.ocr_provider != 'mistral' %}display:none{% endif %}">
+              <label class="form-label">Mistral API Key</label>
+              <input type="password" name="mistral_api_key" value="" placeholder="{% if profile.mistral_api_key %}•••••••• (saved — leave blank to keep){% else %}Mistral API key for OCR…{% endif %}" class="key-input" style="width: 100%;" />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Save OCR Settings</button>
+        </div>
+
+        <!-- ── Zotero ── -->
+        <div class="settings-pane" id="pane-zotero">
+          <div class="settings-header">
+            <h1 class="settings-title">Zotero Integration</h1>
+            <p class="settings-subtitle">Connect your Zotero library to analyze bibliographic data.</p>
+          </div>
+          
+          <div class="form-section">
+            <div class="form-group">
+              <label class="form-label">API Mode</label>
+              <select name="zotero_api_mode" class="key-input" style="width: 100%;">
+                <option value="remote" {% if profile.zotero_api_mode == 'remote' %}selected{% endif %}>Remote (Web API)</option>
+                <option value="local" {% if profile.zotero_api_mode == 'local' %}selected{% endif %}>Local (Desktop App)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Library ID</label>
+              <input type="text" name="zotero_user_id" value="{{ profile.zotero_user_id }}" class="key-input" style="width: 100%;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">API Key</label>
+              <input type="password" name="zotero_api_key" value="" placeholder="{% if profile.zotero_api_key %}•••••••• (saved — leave blank to keep){% endif %}" class="key-input" style="width: 100%;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Library Type</label>
+              <select name="zotero_library_type" class="key-input" style="width: 100%;">
+                <option value="user" {% if profile.zotero_library_type == 'user' %}selected{% endif %}>User (Personal)</option>
+                <option value="group" {% if profile.zotero_library_type == 'group' %}selected{% endif %}>Group</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Save Zotero Settings</button>
+        </div>
+
+        <!-- ── Article Search ── -->
+        <div class="settings-pane" id="pane-search">
+          <div class="settings-header">
+            <h1 class="settings-title">Article Search APIs</h1>
+            <p class="settings-subtitle">API keys for scholarly search sources. Crossref, OpenAlex, arXiv and Europe PMC need no key. CORE and Springer Nature require one; Semantic Scholar works without a key but a key raises the rate limit.</p>
+          </div>
+
+          <div class="form-section">
+            <div class="form-group">
+              <label class="form-label">CORE API Key</label>
+              <input type="password" name="core_api_key" value="" placeholder="{% if profile.core_api_key %}•••••••• (saved — leave blank to keep){% else %}Get one at core.ac.uk/services/api{% endif %}" class="key-input" style="width: 100%;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Springer Nature API Key</label>
+              <input type="password" name="springer_api_key" value="" placeholder="{% if profile.springer_api_key %}•••••••• (saved — leave blank to keep){% else %}Get one at dev.springernature.com{% endif %}" class="key-input" style="width: 100%;" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Semantic Scholar API Key <span style="opacity:.6;">(optional)</span></label>
+              <input type="password" name="semantic_scholar_api_key" value="" placeholder="{% if profile.semantic_scholar_api_key %}•••••••• (saved — leave blank to keep){% else %}Optional — raises rate limit{% endif %}" class="key-input" style="width: 100%;" />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">Save Search Settings</button>
+        </div>
+
+      </form>
+    </main>
+  </div>
+
+  <script>
+    // Tab switching logic
+    document.querySelectorAll('.settings-menu-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const paneId = item.dataset.pane;
+        
+        // Update menu items
+        document.querySelectorAll('.settings-menu-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        
+        // Update panes
+        document.querySelectorAll('.settings-pane').forEach(p => p.classList.remove('active'));
+        document.getElementById(`pane-${paneId}`).classList.add('active');
+      });
+    });
+
+    function csrfHeaders() {
+      const token = document.querySelector('input[name="csrfmiddlewaretoken"]');
+      return { 'X-CSRFToken': token ? token.value : '' };
+    }
+
+    // Ollama Toggle Logic
+    const toggleOllamaBtn = document.getElementById('toggle-ollama-btn');
+    if (toggleOllamaBtn) {
+      toggleOllamaBtn.addEventListener('click', async () => {
+        const label = toggleOllamaBtn.querySelector('.btn-label');
+        const action = label.textContent.includes('Start') ? 'start' : 'stop';
+        
+        toggleOllamaBtn.classList.add('loading');
+        toggleOllamaBtn.disabled = true;
+        
+        try {
+          const formData = new FormData();
+          formData.append('action', action);
+          
+          const res = await fetch('{% url "manage_ollama" %}', {
+            method: 'POST',
+            headers: csrfHeaders(),
+            body: formData
+          });
+          const data = await res.json();
+          
+          if (data.status === 'starting' || data.status === 'stopping') {
+            label.textContent = action === 'start' ? 'Starting...' : 'Stopping...';
+            // Wait a few seconds and reload to see status
+            setTimeout(() => window.location.reload(), 3000);
+          } else {
+             window.location.reload();
+          }
+        } catch (err) {
+          alert('Error managing Ollama: ' + err.message);
+          toggleOllamaBtn.classList.remove('loading');
+          toggleOllamaBtn.disabled = false;
+        }
+      });
+    }
+
+    // LM Studio Toggle Logic
+    const toggleLmStudioBtn = document.getElementById('toggle-lmstudio-btn');
+    if (toggleLmStudioBtn) {
+      toggleLmStudioBtn.addEventListener('click', async () => {
+        const label = toggleLmStudioBtn.querySelector('.btn-label');
+        const action = label.textContent.includes('Start') ? 'start' : 'stop';
+        
+        toggleLmStudioBtn.classList.add('loading');
+        toggleLmStudioBtn.disabled = true;
+        
+        try {
+          const formData = new FormData();
+          formData.append('action', action);
+          
+          const res = await fetch('{% url "manage_lmstudio" %}', {
+            method: 'POST',
+            headers: csrfHeaders(),
+            body: formData
+          });
+          const data = await res.json();
+          
+          if (data.status === 'starting' || data.status === 'stopping') {
+            label.textContent = action === 'start' ? 'Starting...' : 'Stopping...';
+            setTimeout(() => window.location.reload(), 4000); // LMS takes a bit longer
+          } else {
+             window.location.reload();
+          }
+        } catch (err) {
+          alert('Error managing LM Studio: ' + err.message);
+          toggleLmStudioBtn.classList.remove('loading');
+          toggleLmStudioBtn.disabled = false;
+        }
+      });
+    }
+
+    // Provider card logic
+    document.querySelectorAll('input[name="ai_provider"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.querySelectorAll('.provider-card').forEach(c => c.classList.remove('active'));
+        radio.closest('.provider-card').classList.add('active');
+      });
+    });
+
+    // OCR Provider logic
+    document.querySelectorAll('input[name="ocr_provider"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.querySelectorAll('.provider-card').forEach(c => {
+          if (c.querySelector('input[name="ocr_provider"]')) c.classList.remove('active');
+        });
+        radio.closest('.provider-card').classList.add('active');
+        
+        const keyGroup = document.getElementById('mistral-key-group');
+        keyGroup.style.display = radio.value === 'mistral' ? 'block' : 'none';
+      });
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,26 @@
+# Secrets & local state
+.env
+db.sqlite3
+app.log
+app.log.*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Django collected static (regenerate with `manage.py collectstatic`)
+staticfiles/
+
+# macOS
+.DS_Store
+
+# Editors / tools
+.claude/settings.local.json
+.idea/
+.vscode/
+
+# SQLite WAL side-files (transient)
+db.sqlite3-wal
+db.sqlite3-shm

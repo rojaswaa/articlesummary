@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Article Search — ArticleSummary</title>
+  {% load static %}
+  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=1.2" />
+  <style>
+    .srch-layout { display: flex; flex: 1; overflow: hidden; }
+
+    /* History sidebar (mirrors references page) */
+    .srch-history { width: 240px; flex-shrink: 0; border-right: 1px solid #1e2330; display: flex; flex-direction: column; background: #0a0d12; }
+    .srch-history-header { padding: 14px 16px; border-bottom: 1px solid #1e2330; }
+    .srch-history-list { flex: 1; overflow-y: auto; list-style: none; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+    .srch-history-item { padding: 8px 10px; border-radius: 8px; border: 1px solid #1e2330; cursor: pointer; transition: all .15s; }
+    .srch-history-item:hover { border-color: #6366f1; background: #161b27; }
+    .srch-history-item.active { border-color: #6366f1; background: #1e2330; }
+    .srch-history-date { font-size: 10px; color: #475569; display: block; margin-bottom: 3px; }
+    .srch-history-name { font-size: 11px; color: #e2e8f0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .srch-history-count { font-size: 10px; color: #64748b; margin-top: 2px; }
+    .srch-history-delete { background: none; border: none; color: #64748b; cursor: pointer; font-size: 12px; padding: 0; line-height: 1; float: right; }
+    .srch-history-delete:hover { color: #f87171; }
+
+    /* Main area */
+    .srch-main { flex: 1; overflow-y: auto; padding: 28px 32px; display: flex; flex-direction: column; gap: 20px; }
+    .srch-main::-webkit-scrollbar { width: 4px; }
+    .srch-main::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 4px; }
+
+    .srch-form { background: #161b27; border: 1px solid #1e2a3a; border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+    .srch-field label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #64748b; margin-bottom: 6px; }
+    .srch-field input[type=text], .srch-field input[type=number], .srch-field textarea { width: 100%; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 10px 12px; color: #e2e8f0; font-size: 13px; outline: none; font-family: inherit; }
+    .srch-field input:focus, .srch-field textarea:focus { border-color: #6366f1; }
+    .srch-field textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+
+    .srch-sources { display: flex; flex-wrap: wrap; gap: 8px; }
+    .srch-source { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #cbd5e1; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 7px 11px; cursor: pointer; user-select: none; }
+    .srch-source:hover { border-color: #4f46e5; }
+    .srch-source.disabled { opacity: .45; cursor: not-allowed; }
+    .srch-source input { accent-color: #6366f1; }
+    .srch-source .key-hint { font-size: 9px; color: #f59e0b; text-transform: uppercase; letter-spacing: .05em; }
+
+    .srch-form-actions { display: flex; align-items: center; gap: 12px; }
+
+    /* Status bar */
+    .srch-status { display: none; align-items: center; gap: 14px; background: #12172a; border: 1px solid #2d3748; border-radius: 10px; padding: 12px 16px; }
+    .srch-status.visible { display: flex; }
+    .srch-status .mini-spinner { width: 16px; height: 16px; border: 2px solid rgba(99,102,241,.2); border-top-color: #6366f1; border-radius: 50%; animation: spin .7s linear infinite; }
+    .srch-status-text { font-size: 13px; color: #94a3b8; }
+    .srch-status-counts { font-size: 12px; color: #64748b; margin-left: auto; display: flex; gap: 14px; }
+    .srch-status-counts b { color: #e2e8f0; }
+
+    /* Results */
+    .srch-results { display: none; flex-direction: column; gap: 12px; }
+    .srch-results.visible { display: flex; }
+    .srch-results-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .srch-count-badge { background: linear-gradient(135deg,#6366f1,#a855f7); color: #fff; font-size: 12px; font-weight: 700; padding: 3px 12px; border-radius: 999px; }
+
+    .srch-table-container { background: #161b27; border: 1px solid #1e2a3a; border-radius: 12px; overflow: hidden; }
+    .srch-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .srch-table thead th { background: #0f1117; color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 10px 12px; border-bottom: 1px solid #1e2a3a; text-align: left; white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+    .srch-table tbody tr { border-bottom: 1px solid #1e2a3a; }
+    .srch-table tbody tr:last-child { border-bottom: none; }
+    .srch-table tbody tr:hover { background: rgba(99,102,241,.04); }
+    .srch-table td { padding: 10px 12px; color: #cbd5e1; vertical-align: top; line-height: 1.5; }
+    .srch-title-cell { font-weight: 600; color: #e2e8f0; max-width: 320px; }
+    .srch-authors-cell { max-width: 180px; color: #94a3b8; font-size: 11px; }
+    .cell-clip { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .srch-reason { font-size: 10px; color: #64748b; margin-top: 4px; cursor: pointer; }
+    .srch-reason:hover { color: #94a3b8; }
+    .srch-reason.expanded { -webkit-line-clamp: unset; display: block; }
+    .srch-doi-link { color: #818cf8; text-decoration: none; font-size: 11px; word-break: break-all; }
+    .srch-doi-link:hover { text-decoration: underline; }
+
+    .badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+    .badge.aligns { background: rgba(34,197,94,.12); color: #4ade80; border: 1px solid rgba(34,197,94,.25); }
+    .badge.no { background: rgba(148,163,184,.1); color: #94a3b8; border: 1px solid rgba(148,163,184,.2); }
+    .badge.pending { background: rgba(99,102,241,.1); color: #a5b4fc; border: 1px solid rgba(99,102,241,.2); }
+    .badge.error { background: rgba(239,68,68,.12); color: #f87171; border: 1px solid rgba(239,68,68,.25); }
+    .src-tag { display: inline-block; font-size: 9px; color: #64748b; background: #0f1117; border: 1px solid #2d3748; border-radius: 4px; padding: 1px 5px; margin: 1px; }
+
+    .srch-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #334155; text-align: center; min-height: 240px; }
+    .srch-empty-icon { font-size: 48px; }
+
+    .filter-row { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #94a3b8; }
+    .filter-row input { accent-color: #6366f1; }
+
+    .srch-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 6px; }
+    .srch-pager button:disabled { opacity: .4; cursor: not-allowed; }
+
+    .srch-eval-controls { display: flex; align-items: center; gap: 12px; }
+
+    .srch-zotero-panel { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; background: #12172a; border: 1px solid #2d3748; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; }
+    .zp-field { display: flex; flex-direction: column; gap: 4px; }
+    .zp-field label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #64748b; }
+    .zp-field select { background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 7px 10px; color: #e2e8f0; font-size: 12px; min-width: 200px; outline: none; }
+    .zp-field select:focus { border-color: #6366f1; }
+
+    /* Per-provider progress chips */
+    .srch-providers { display: flex; flex-wrap: wrap; gap: 8px; }
+    .prov-chip { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #cbd5e1; background: #12172a; border: 1px solid #2d3748; border-radius: 8px; padding: 6px 10px; }
+    .prov-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: #6366f1; }
+    .prov-chip.done .dot { background: #4ade80; }
+    .prov-chip b { color: #e2e8f0; }
+    .prov-chip .spin { width: 10px; height: 10px; border: 2px solid rgba(99,102,241,.25); border-top-color: #6366f1; border-radius: 50%; animation: spin .7s linear infinite; }
+
+    /* Debug log */
+    .srch-debug { background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; overflow: hidden; }
+    .srch-debug-head { display: flex; justify-content: space-between; align-items: center; background: #12172a; padding: 8px 12px; font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
+    .srch-debug pre { padding: 12px; margin: 0; font-family: monospace; font-size: 11px; color: #cbd5e1; background: #090b10; max-height: 220px; overflow-y: auto; white-space: pre-wrap; }
+
+    .user-nav { display: flex; align-items: center; gap: 12px; margin-left: 16px; border-left: 1px solid #1e2330; padding-left: 16px; }
+    .user-badge { width: 28px; height: 28px; background: #6366f1; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; }
+    .nav-link.active { color: #a5b4fc; border-color: #6366f1; background: rgba(99,102,241,.08); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="logo">ArticleSummary</span>
+    <span class="tagline">Article Search</span>
+    <nav class="header-nav" style="display: flex; align-items: center;">
+      <a href="/" class="nav-link">📊 Analysis</a>
+      <a href="/search/" class="nav-link active" style="margin-left: 8px;">🔎 Search</a>
+      <a href="/references/" class="nav-link" style="margin-left: 8px;">📚 References</a>
+      <a href="/settings" class="nav-link" style="margin-left: 8px;">⚙ Settings</a>
+      <div class="user-nav">
+        <div class="user-badge">{{ request.user.username|slice:":1"|upper }}</div>
+        <a href="{% url 'logout' %}" class="nav-link" style="color: #f87171; border-color: rgba(239,68,68,0.2);">Logout</a>
+      </div>
+    </nav>
+  </header>
+
+  <div class="srch-layout">
+
+    <!-- HISTORY -->
+    <aside class="srch-history">
+      <div class="srch-history-header"><span class="section-label">Search History</span></div>
+      <ul class="srch-history-list" id="history-list">
+        {% for s in recent_searches %}
+        <li class="srch-history-item" data-id="{{ s.id }}">
+          <button class="srch-history-delete" data-id="{{ s.id }}" title="Delete">✕</button>
+          <span class="srch-history-date">{{ s.created_at|date:"M d, Y H:i" }}</span>
+          <div class="srch-history-name">{{ s.name|default:s.query|truncatechars:40 }}</div>
+          <div class="srch-history-count">{{ s.articles.count }} articles · {{ s.status }}</div>
+        </li>
+        {% endfor %}
+      </ul>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="srch-main">
+
+      <!-- FORM -->
+      <div class="srch-form">
+        <div class="srch-field">
+          <label>Search Query</label>
+          <input type="text" id="query" placeholder="e.g. machine learning in systematic reviews" autocomplete="off" />
+        </div>
+        <div class="srch-field">
+          <label>Research Criteria (articles are evaluated for alignment against this)</label>
+          <textarea id="criteria" placeholder="Describe what makes an article relevant to your review…"></textarea>
+        </div>
+        <div class="srch-field">
+          <label>Sources</label>
+          <div class="srch-sources">
+            {% for p in providers %}
+            <label class="srch-source {% if p.needs_key %}disabled{% endif %}" title="{% if p.needs_key %}Add an API key in Settings to enable{% endif %}">
+              <input type="checkbox" class="source-cb" value="{{ p.key }}" {% if not p.needs_key %}checked{% else %}disabled{% endif %} />
+              {{ p.label }}
+              {% if p.needs_key %}<span class="key-hint">key needed</span>{% endif %}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+          <div class="srch-field">
+            <label>Year From</label>
+            <input type="number" id="year-from" placeholder="e.g. 2015" min="1000" max="3000" style="width: 120px;" />
+          </div>
+          <div class="srch-field">
+            <label>Year To</label>
+            <input type="number" id="year-to" placeholder="e.g. 2025" min="1000" max="3000" style="width: 120px;" />
+          </div>
+          <div class="srch-field" style="flex: 1; min-width: 200px;">
+            <label>Name (optional)</label>
+            <input type="text" id="name" placeholder="Label this search…" autocomplete="off" />
+          </div>
+        </div>
+        <div class="srch-field">
+          <label>Filters</label>
+          <div class="srch-sources">
+            <label class="srch-source"><input type="checkbox" id="f-scope" /> Title/abstract only</label>
+            <label class="srch-source" title="Also the practical 'peer-reviewed' filter — drops books, datasets, preprints"><input type="checkbox" id="f-journal" /> Journal articles only</label>
+            <label class="srch-source"><input type="checkbox" id="f-abstract" /> Has abstract</label>
+            <label class="srch-source"><input type="checkbox" id="f-fulltext" /> Full text available</label>
+          </div>
+        </div>
+        <div class="srch-form-actions">
+          <button class="btn btn-primary" id="run-btn">🔎 Run Search</button>
+          <button class="btn btn-secondary" id="stop-btn" style="display: none;">■ Stop</button>
+          <span style="font-size: 11px; color: #475569;">Unlimited results — this can take a while on large queries.</span>
+        </div>
+      </div>
+
+      <!-- STATUS -->
+      <div class="srch-status" id="status-bar">
+        <span class="mini-spinner" id="status-spin"></span>
+        <span class="srch-status-text" id="status-text">Searching…</span>
+        <span class="srch-status-counts">
+          <span>Fetched <b id="count-fetched">0</b></span>
+          <span>Unique <b id="count-total">0</b></span>
+          <span>Evaluated <b id="count-eval">0</b></span>
+          <span>Aligned <b id="count-aligned">0</b></span>
+        </span>
+      </div>
+
+      <!-- EVALUATION CONTROLS -->
+      <div id="eval-controls" class="srch-eval-controls" style="display: none;">
+        <button class="btn btn-primary" id="eval-btn">▶ Evaluate</button>
+        <button class="btn btn-secondary" id="pause-btn" style="display: none;">⏸ Pause</button>
+        <button class="btn btn-secondary" id="restart-btn" style="display: none;">↻ Restart evaluation</button>
+        <span id="eval-hint" style="font-size: 12px; color: #64748b;"></span>
+      </div>
+
+      <!-- PER-PROVIDER PROGRESS -->
+      <div id="provider-progress" class="srch-providers" style="display: none;"></div>
+
+      <!-- DEBUG LOG -->
+      <div id="debug-panel" class="srch-debug" style="display: none;">
+        <div class="srch-debug-head">
+          <span>🔧 Run Log</span>
+          <button class="btn btn-secondary" id="toggle-log" style="font-size: 10px; padding: 2px 8px;">Show</button>
+        </div>
+        <pre id="debug-log" style="display: none;"></pre>
+      </div>
+
+      <!-- RESULTS -->
+      <div class="srch-results" id="results">
+        <div class="srch-results-header">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span class="srch-count-badge" id="results-count">0 articles</span>
+            <label class="filter-row"><input type="checkbox" id="aligned-only" /> Aligned only</label>
+            <label class="filter-row">Source
+              <select id="source-filter" style="background:#0f1117;border:1px solid #2d3748;border-radius:6px;color:#e2e8f0;font-size:12px;padding:3px 6px;">
+                <option value="">All</option>
+              </select>
+            </label>
+          </div>
+          <button class="btn btn-secondary" id="zotero-btn" style="font-size: 12px; padding: 6px 12px;">📚 Save Aligned to Zotero</button>
+          <button class="btn btn-secondary" id="export-btn" style="font-size: 12px; padding: 6px 12px;">📥 Export Aligned CSV</button>
+        </div>
+
+        <!-- Zotero destination picker -->
+        <div id="zotero-panel" class="srch-zotero-panel" style="display: none;">
+          <div class="zp-field">
+            <label>Library</label>
+            <select id="zotero-library"><option value="">Loading…</option></select>
+          </div>
+          <div class="zp-field">
+            <label>Parent collection</label>
+            <select id="zotero-collection"><option value="">(top level)</option></select>
+          </div>
+          <label class="filter-row" style="margin-bottom: 6px;"><input type="checkbox" id="zotero-enrich" checked /> Enrich by DOI (Crossref)</label>
+          <label class="filter-row" style="margin-bottom: 6px;"><input type="checkbox" id="zotero-pdf" checked /> Attach open-access PDFs</label>
+          <button class="btn btn-primary" id="zotero-confirm" style="font-size: 12px; padding: 6px 12px;">Save here</button>
+          <button class="btn btn-secondary" id="zotero-cancel" style="font-size: 12px; padding: 6px 12px;">Cancel</button>
+          <span id="zotero-status" style="font-size: 11px; color: #64748b;"></span>
+        </div>
+        <div class="srch-table-container">
+          <table class="srch-table">
+            <thead>
+              <tr>
+                <th style="width: 90px;">Aligns</th>
+                <th>Title</th>
+                <th>Authors</th>
+                <th style="width: 55px;">Year</th>
+                <th style="width: 120px;">Sources</th>
+                <th style="width: 140px;">DOI</th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+
+        <div class="srch-pager" id="pager" style="display: none;">
+          <button class="btn btn-secondary" id="prev-page" style="font-size: 12px; padding: 5px 12px;">← Prev</button>
+          <span id="page-info" style="font-size: 12px; color: #94a3b8;">Page 1</span>
+          <button class="btn btn-secondary" id="next-page" style="font-size: 12px; padding: 5px 12px;">Next →</button>
+        </div>
+      </div>
+
+      <!-- EMPTY -->
+      <div class="srch-empty" id="empty">
+        <div class="srch-empty-icon">🔎</div>
+        <p style="font-size: 14px; line-height: 1.6;">
+          <strong style="color:#475569;">Multi-source article search</strong><br>
+          Enter a query and criteria, pick your sources, and run.<br>
+          Results are harmonized across APIs and scored against your criteria.
+        </p>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="{% static 'js/search.js' %}?v=2.8"></script>
+</body>
+</html>

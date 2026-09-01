@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reference Extractor — ArticleSummary</title>
+  {% load static %}
+  {% load json_extras %}
+  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=1.2" />
+  <style>
+    /* ── References Layout ── */
+    .ref-layout { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Left sidebar: Zotero collections + article list ── */
+    .ref-sidebar {
+      width: 400px; flex-shrink: 0;
+      border-right: 1px solid #1e2330;
+      display: flex; flex-direction: column;
+      background: #0a0d12;
+    }
+
+    .ref-sidebar-header {
+      padding: 16px; border-bottom: 1px solid #1e2330;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+
+    .ref-sidebar-title {
+      font-size: 14px; font-weight: 700; color: #e2e8f0;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    /* Collection selector */
+    .collection-selector { display: flex; flex-direction: column; gap: 8px; }
+
+    .collection-selector label {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.07em; color: #64748b;
+    }
+
+    .collection-row { display: flex; gap: 8px; align-items: center; }
+
+    #library-select, #collection-select {
+      flex: 1;
+      background: #0f1117; border: 1px solid #2d3748; border-radius: 8px;
+      padding: 8px 10px; color: #e2e8f0; font-size: 12px;
+      outline: none; cursor: pointer;
+    }
+    #library-select:focus, #collection-select:focus { border-color: #6366f1; }
+
+    /* Article list */
+    .article-list-container {
+      flex: 1; overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+
+    .article-list-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #1e2330;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    .article-list {
+      list-style: none; display: flex; flex-direction: column;
+      gap: 2px; padding: 8px; overflow-y: auto; flex: 1;
+    }
+    .article-list::-webkit-scrollbar { width: 3px; }
+    .article-list::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 4px; }
+
+    .article-item {
+      display: flex; align-items: center; gap: 10px;
+      border: 1px solid #1e2330; border-radius: 8px;
+      padding: 10px 12px; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .article-item:hover { border-color: #4f46e5; background: #12172a; }
+    .article-item.active { border-color: #6366f1; background: #13172e; }
+
+    .article-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .article-title-text {
+      font-size: 12px; color: #cbd5e1; font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .article-meta-text {
+      font-size: 10px; color: #475569;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    .article-status {
+      font-size: 10px; font-weight: 600; padding: 2px 8px;
+      border-radius: 999px; white-space: nowrap; flex-shrink: 0;
+    }
+    .article-status.extracted {
+      background: rgba(34,197,94,0.1); color: #4ade80;
+      border: 1px solid rgba(34,197,94,0.2);
+    }
+
+    /* ── Right panel: results ── */
+    .ref-main {
+      flex: 1; overflow-y: auto; padding: 28px 32px;
+      display: flex; flex-direction: column;
+    }
+    .ref-main::-webkit-scrollbar { width: 4px; }
+    .ref-main::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 4px; }
+
+    /* Empty state */
+    .ref-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; color: #334155; text-align: center;
+    }
+    .ref-empty-icon { font-size: 48px; }
+    .ref-empty p { font-size: 14px; line-height: 1.6; }
+    .ref-empty strong { color: #475569; }
+
+    /* Result header */
+    .ref-result-header {
+      display: flex; align-items: flex-start;
+      justify-content: space-between; gap: 16px;
+      margin-bottom: 20px;
+    }
+    .ref-result-title {
+      font-size: 18px; font-weight: 700; color: #f1f5f9;
+      line-height: 1.3; word-break: break-word;
+    }
+    .ref-result-meta {
+      font-size: 12px; color: #64748b; margin-top: 6px;
+      display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+    }
+
+    .ref-count-badge {
+      background: linear-gradient(135deg, #6366f1, #a855f7);
+      color: #fff; font-size: 12px; font-weight: 700;
+      padding: 3px 12px; border-radius: 999px;
+    }
+
+    .ref-actions {
+      display: flex; gap: 8px; align-items: center; flex-shrink: 0;
+    }
+
+    /* Reference table */
+    .ref-table-container {
+      background: #161b27; border: 1px solid #1e2a3a;
+      border-radius: 12px; overflow: hidden;
+    }
+
+    .ref-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .ref-table thead th {
+      background: #0f1117; color: #64748b; font-size: 10px;
+      font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.05em; padding: 10px 12px;
+      border-bottom: 1px solid #1e2a3a;
+      text-align: left; white-space: nowrap;
+      position: sticky; top: 0; z-index: 1;
+    }
+
+    .ref-table tbody tr {
+      border-bottom: 1px solid #1e2a3a;
+      transition: background 0.1s;
+    }
+    .ref-table tbody tr:last-child { border-bottom: none; }
+    .ref-table tbody tr:hover { background: rgba(99,102,241,0.04); }
+
+    .ref-table td {
+      padding: 10px 12px; color: #cbd5e1;
+      vertical-align: top; line-height: 1.5;
+    }
+    .ref-table td.ref-num {
+      color: #475569; font-weight: 600;
+      text-align: center; width: 40px;
+    }
+    .ref-table td.ref-title-cell {
+      font-weight: 600; color: #e2e8f0;
+      max-width: 250px;
+    }
+    .ref-table td.ref-author-cell { max-width: 180px; }
+    .ref-table td.ref-year-cell { white-space: nowrap; width: 60px; }
+    .ref-table td.ref-doi-cell { max-width: 180px; word-break: break-all; }
+
+    .ref-doi-link {
+      color: #818cf8; text-decoration: none;
+      font-size: 11px; word-break: break-all;
+    }
+    .ref-doi-link:hover { text-decoration: underline; color: #a5b4fc; }
+
+    .cell-overflow {
+      overflow: hidden; text-overflow: ellipsis;
+      display: -webkit-box; -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+
+    /* Extraction progress overlay */
+    .extraction-progress {
+      display: none; flex-direction: column; align-items: center;
+      justify-content: center; gap: 16px; padding: 40px; flex: 1;
+    }
+    .extraction-progress.visible { display: flex; }
+
+    .extraction-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid rgba(99,102,241,0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .extraction-label {
+      font-size: 14px; color: #94a3b8; text-align: center;
+    }
+
+    /* Error state */
+    .extraction-error {
+      display: none; flex-direction: column; align-items: center;
+      justify-content: center; gap: 12px; padding: 40px; flex: 1;
+    }
+    .extraction-error.visible { display: flex; }
+    .extraction-error-icon { font-size: 36px; }
+    .extraction-error-msg {
+      font-size: 13px; color: #f87171;
+      text-align: center; max-width: 400px; line-height: 1.6;
+    }
+
+    /* History sidebar */
+    .ref-history-sidebar {
+      width: 220px; border-right: 1px solid #1e2330;
+      display: flex; flex-direction: column; background: #0a0d12;
+    }
+    .ref-history-header {
+      padding: 14px 16px; border-bottom: 1px solid #1e2330;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .ref-history-list {
+      flex: 1; overflow-y: auto; list-style: none;
+      padding: 8px; display: flex; flex-direction: column; gap: 4px;
+    }
+    .ref-history-item {
+      padding: 8px 10px; border-radius: 8px;
+      border: 1px solid #1e2330; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .ref-history-item:hover { border-color: #6366f1; background: #161b27; }
+    .ref-history-item.active { border-color: #6366f1; background: #1e2330; }
+    .ref-history-date { font-size: 10px; color: #475569; display: block; margin-bottom: 3px; }
+    .ref-history-name {
+      font-size: 11px; color: #e2e8f0; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ref-history-count { font-size: 10px; color: #64748b; margin-top: 2px; }
+    .ref-history-delete {
+      background: none; border: none; color: #64748b;
+      cursor: pointer; font-size: 12px; padding: 0; line-height: 1;
+    }
+    .ref-history-delete:hover { color: #f87171; }
+
+    /* Loading overlay for collection/article list */
+    .loading-overlay {
+      display: none; align-items: center; justify-content: center;
+      padding: 40px; flex: 1;
+    }
+    .loading-overlay.visible { display: flex; }
+    .loading-text { font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 8px; }
+    .mini-spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(99,102,241,0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    /* Zotero loading steps */
+    .zotero-load-steps {
+      display: none; flex-direction: column; gap: 6px;
+      padding: 12px 16px; flex: 1;
+    }
+    .zotero-load-steps.visible { display: flex; }
+
+    /* Nav active state */
+    .nav-link.active {
+      color: #a5b4fc; border-color: #6366f1;
+      background: rgba(99,102,241,0.08);
+    }
+
+    /* User nav */
+    .user-nav {
+      display: flex; align-items: center; gap: 12px;
+      margin-left: 16px; border-left: 1px solid #1e2330; padding-left: 16px;
+    }
+    .user-badge {
+      width: 28px; height: 28px; background: #6366f1;
+      border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 12px; font-weight: 700; color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="logo">ArticleSummary</span>
+    <span class="tagline">Reference Extractor</span>
+    <nav class="header-nav" style="display: flex; align-items: center;">
+      <a href="/" class="nav-link">📊 Analysis</a>
+      <a href="/search/" class="nav-link" style="margin-left: 8px;">🔎 Search</a>
+      <a href="/references/" class="nav-link active" style="margin-left: 8px;">📚 References</a>
+      <a href="/settings" class="nav-link" style="margin-left: 8px;">⚙ Settings</a>
+      <div class="user-nav">
+        <div class="user-badge">{{ request.user.username|slice:":1"|upper }}</div>
+        <a href="{% url 'logout' %}" class="nav-link" style="color: #f87171; border-color: rgba(239,68,68,0.2);">Logout</a>
+      </div>
+    </nav>
+  </header>
+
+  <div class="ref-layout">
+
+    <!-- HISTORY SIDEBAR -->
+    <aside class="ref-history-sidebar">
+      <div class="ref-history-header">
+        <span class="section-label">History</span>
+      </div>
+      <ul class="ref-history-list" id="ref-history-list">
+        {% for job in recent_jobs %}
+        <li class="ref-history-item" data-id="{{ job.id }}">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <span class="ref-history-date">{{ job.created_at|date:"M d, Y H:i" }}</span>
+            <button class="ref-history-delete" data-id="{{ job.id }}" title="Delete">✕</button>
+          </div>
+          <div class="ref-history-name">{{ job.pdf_path|split_path_last }}</div>
+          <div class="ref-history-count">{{ job.references.count }} references</div>
+        </li>
+        {% endfor %}
+      </ul>
+    </aside>
+
+    <!-- ARTICLE LIST PANEL -->
+    <aside class="ref-sidebar">
+      <div class="ref-sidebar-header">
+        <div class="ref-sidebar-title">
+          <span>📚</span> Zotero Collection Browser
+        </div>
+
+        <div class="collection-selector">
+          <label>Library</label>
+          <select id="library-select">
+            <option value="">Loading libraries…</option>
+          </select>
+
+          <label style="margin-top: 6px;">Collection</label>
+          <div class="collection-row">
+            <select id="collection-select" disabled>
+              <option value="">Select a library first</option>
+            </select>
+            <button class="btn btn-primary" id="load-collection-btn" disabled style="padding: 6px 12px; font-size: 12px;">
+              Load
+            </button>
+          </div>
+
+          <button class="btn btn-secondary" id="browse-folder-btn" style="width: 100%; margin-top: 8px; padding: 6px 12px; font-size: 12px;">
+            📁 Browse Folder…
+          </button>
+        </div>
+      </div>
+
+      <!-- Zotero loading steps -->
+      <div class="zotero-load-steps" id="zotero-load-steps"></div>
+
+      <!-- Loading -->
+      <div class="loading-overlay" id="article-loading">
+        <div class="loading-text"><span class="mini-spinner"></span> Loading articles…</div>
+      </div>
+
+      <!-- Article list -->
+      <div class="article-list-container" id="article-list-container" style="display: none;">
+        <div class="article-list-header">
+          <span class="section-label">Articles</span>
+          <span class="pdf-count" id="article-count">0</span>
+        </div>
+        <ul class="article-list" id="article-list"></ul>
+      </div>
+    </aside>
+
+    <!-- MAIN RESULTS PANEL -->
+    <main class="ref-main" id="ref-main">
+
+      <!-- Empty state -->
+      <div class="ref-empty" id="ref-empty">
+        <div class="ref-empty-icon">📚</div>
+        <p>
+          <strong>Reference Extractor</strong><br>
+          Select a Zotero collection, then click on an article<br>
+          to extract its reference list.
+        </p>
+      </div>
+
+      <!-- Extraction progress -->
+      <div class="extraction-progress" id="extraction-progress">
+        <div class="extraction-spinner"></div>
+        <div class="extraction-label" id="extraction-label">Extracting references…<br><span style="font-size: 11px; color: #475569;">OCR → LLM → Parsing</span></div>
+      </div>
+
+      <!-- Error state -->
+      <div class="extraction-error" id="extraction-error" style="max-height: 100%; overflow-y: auto; padding: 20px; width: 100%;">
+        <div class="extraction-error-icon">⚠️</div>
+        <div class="extraction-error-msg" id="extraction-error-msg" style="width: 100%; margin-bottom: 12px;"></div>
+        
+        <!-- Collapsible Debug Info -->
+        <div id="debug-container" style="display: none; width: 100%; max-width: 800px; margin: 16px auto; text-align: left; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; overflow: hidden;">
+          <div style="background: #1a202c; padding: 8px 12px; font-size: 11px; font-weight: 700; color: #a0aec0; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2d3748;">
+            <span>🔧 Extraction Debug Logs & Trace</span>
+            <button class="btn btn-secondary" id="toggle-debug-btn" style="padding: 2px 8px; font-size: 10px; line-height: 1; border-color: rgba(255,255,255,0.15);">Show Logs</button>
+          </div>
+          <div id="debug-content-area" style="display: none; padding: 12px; font-family: monospace; font-size: 11px; color: #e2e8f0; background: #090b10;">
+            <div style="margin-bottom: 6px; color: #818cf8; font-weight: bold;">Execution Trace:</div>
+            <pre id="debug-log-text" style="background: #030406; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; max-height: 180px; overflow-y: auto; margin-bottom: 12px; border: 1px solid #1e2430; color: #cbd5e1;"></pre>
+            
+            <div style="margin-bottom: 6px; color: #818cf8; font-weight: bold;">Raw LLM Response:</div>
+            <pre id="debug-raw-response" style="background: #030406; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; max-height: 180px; overflow-y: auto; border: 1px solid #1e2430; color: #cbd5e1;"></pre>
+          </div>
+        </div>
+        
+        <button class="btn btn-secondary" id="retry-extract-btn" style="margin-top: 8px;">Retry Extraction</button>
+      </div>
+
+      <!-- Results view -->
+      <div id="ref-results" style="display: none;">
+        <div class="ref-result-header">
+          <div>
+            <div class="ref-result-title" id="result-title"></div>
+            <div class="ref-result-meta">
+              <span class="ref-count-badge" id="result-count"></span>
+              <span id="result-ocr-badge"></span>
+              <span style="font-size: 11px; color: #475569;" id="result-date"></span>
+            </div>
+          </div>
+          <div class="ref-actions">
+            <button class="btn btn-secondary" id="citations-btn" style="font-size: 12px; padding: 6px 12px; display: none;">
+              🔗 Cited By
+            </button>
+            <button class="btn btn-secondary" id="export-csv-btn" style="font-size: 12px; padding: 6px 12px;">
+              📥 Export CSV
+            </button>
+            <button class="btn btn-secondary" id="reextract-btn" style="font-size: 12px; padding: 6px 12px;">
+              🔄 Re-extract
+            </button>
+            <button class="btn btn-secondary" id="view-debug-btn" style="font-size: 12px; padding: 6px 12px;">
+              🔧 View Trace
+            </button>
+          </div>
+        </div>
+
+        <div class="ref-table-container">
+          <table class="ref-table">
+            <thead>
+              <tr>
+                <th style="width: 50px; text-align: center; font-size: 11px;">#</th>
+                <th style="text-align: left; padding-left: 12px; font-size: 11px;">Reference (APA 7th Edition)</th>
+              </tr>
+            </thead>
+            <tbody id="ref-table-body"></tbody>
+          </table>
+        </div>
+
+        <!-- Collapsible Debug Info for Results -->
+        <div id="results-debug-container" style="display: none; margin-top: 20px; text-align: left; background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; overflow: hidden; width: 100%;">
+          <div style="background: #1a202c; padding: 8px 12px; font-size: 11px; font-weight: 700; color: #a0aec0; text-transform: uppercase; border-bottom: 1px solid #2d3748;">
+            <span>🔧 Successful Extraction Debug Logs & Trace</span>
+          </div>
+          <div style="padding: 12px; font-family: monospace; font-size: 11px; color: #e2e8f0; background: #090b10;">
+            <div style="margin-bottom: 6px; color: #818cf8; font-weight: bold;">Execution Trace:</div>
+            <pre id="results-debug-log-text" style="background: #030406; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; max-height: 180px; overflow-y: auto; margin-bottom: 12px; border: 1px solid #1e2430; color: #cbd5e1;"></pre>
+            
+            <div style="margin-bottom: 6px; color: #818cf8; font-weight: bold;">Raw LLM Response:</div>
+            <pre id="results-debug-raw-response" style="background: #030406; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; max-height: 180px; overflow-y: auto; border: 1px solid #1e2430; color: #cbd5e1;"></pre>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="{% static 'js/references.js' %}?v=1.2"></script>
+</body>
+</html>

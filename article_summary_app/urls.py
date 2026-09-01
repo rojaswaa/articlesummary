@@ -1,0 +1,61 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('', views.index, name='index'),
+    path('login/', views.user_login, name='login'),
+    path('logout/', views.user_logout, name='logout'),
+    path('signup/', views.user_signup, name='signup'),
+    path('settings/', views.admin, name='admin'),
+    path('settings/save-ai-config', views.admin_save_ai_config, name='admin_save_ai_config'),
+    path('settings/models', views.admin_models, name='admin_models'),
+    path('settings/manage-ollama', views.manage_ollama, name='manage_ollama'),
+    path('settings/manage-lmstudio', views.manage_lmstudio, name='manage_lmstudio'),
+    
+    # API endpoints
+    path('api/browse-folder', views.browse_folder, name='browse_folder'),
+    path('api/zotero-collections', views.zotero_collections, name='zotero_collections'),
+    path('api/zotero-pdfs', views.zotero_pdfs, name='zotero_pdfs'),
+    path('api/zotero-pdfs-stream', views.zotero_pdfs_stream, name='zotero_pdfs_stream'),
+    path('api/analyze-start', views.analyze_start, name='analyze_start'),
+    path('api/analyze-status/<str:session_id>', views.analyze_status, name='analyze_status'),
+    path('api/analyze-status-stream/<str:session_id>', views.analyze_status_stream, name='analyze_status_stream'),
+    path('api/analyze-progress/<str:session_id>', views.analyze_progress, name='analyze_progress'),
+    path('api/analyze-result/<str:session_id>/<path:pdf_path>', views.analyze_result, name='analyze_result'),
+    path('api/analyze-citations/<str:session_id>/<path:pdf_path>', views.analyze_citations, name='analyze_citations'),
+    path('api/analyze-stop', views.analyze_stop, name='analyze_stop'),
+    path('api/analyze-retry/<str:session_id>', views.analyze_retry, name='analyze_retry'),
+    path('api/analyze-export/<str:session_id>', views.analyze_export, name='analyze_export'),
+    path('api/analyze-zotero-save/<str:session_id>', views.analyze_zotero_save, name='analyze_zotero_save'),
+    path('api/analyze-zotero-save-stream/<str:session_id>', views.analyze_zotero_save_stream, name='analyze_zotero_save_stream'),
+    path('api/sessions', views.list_sessions, name='list_sessions'),
+    path('api/sessions/<str:session_id>', views.get_session_details, name='get_session_details'),
+    path('api/sessions/<str:session_id>/delete', views.delete_session, name='delete_session'),
+    path('pdf', views.serve_pdf, name='serve_pdf'),
+
+    # Reference Extractor
+    path('references/', views.references_index, name='references_index'),
+    path('api/references/extract', views.references_extract, name='references_extract'),
+    path('api/references/status/<str:job_id>', views.references_status, name='references_status'),
+    path('api/references/result/<str:job_id>', views.references_result, name='references_result'),
+    path('api/references/export/<str:job_id>', views.references_export, name='references_export'),
+    path('api/references/citations/<str:job_id>', views.references_citations, name='references_citations'),
+    path('api/references/history', views.references_history, name='references_history'),
+    path('api/references/<str:job_id>/delete', views.references_delete, name='references_delete'),
+
+    # Article Search
+    path('search/', views.search_index, name='search_index'),
+    path('api/search/start', views.search_start, name='search_start'),
+    path('api/search/status/<str:search_id>', views.search_status, name='search_status'),
+    path('api/search/status-stream/<str:search_id>', views.search_status_stream, name='search_status_stream'),
+    path('api/search/result/<str:search_id>', views.search_result, name='search_result'),
+    path('api/search/stop/<str:search_id>', views.search_stop, name='search_stop'),
+    path('api/search/evaluate/<str:search_id>', views.search_evaluate, name='search_evaluate'),
+    path('api/search/pause/<str:search_id>', views.search_pause, name='search_pause'),
+    path('api/search/restart-eval/<str:search_id>', views.search_restart_eval, name='search_restart_eval'),
+    path('api/search/export/<str:search_id>', views.search_export, name='search_export'),
+    path('api/search/zotero-save/<str:search_id>', views.search_zotero_save, name='search_zotero_save'),
+    path('api/search/zotero-status/<str:search_id>', views.search_zotero_status, name='search_zotero_status'),
+    path('api/searches', views.list_searches, name='list_searches'),
+    path('api/searches/<str:search_id>/delete', views.delete_search, name='delete_search'),
+]

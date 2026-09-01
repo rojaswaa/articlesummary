@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Article Summary</title>
+  {% load static %}
+  {% load json_extras %}
+  <link rel="stylesheet" href="{% static 'css/style.css' %}?v=1.2" />
+  <!-- PDF.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+  <style>
+    .history-sidebar { width: 260px; border-right: 1px solid #1e2330; display: flex; flex-direction: column; background: #0a0d12; }
+    .history-header { padding: 14px 16px; border-bottom: 1px solid #1e2330; display: flex; align-items: center; justify-content: space-between; }
+    .history-list { flex: 1; overflow-y: auto; list-style: none; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .history-item { padding: 10px 12px; border-radius: 8px; border: 1px solid #1e2330; cursor: pointer; transition: all 0.15s; }
+    .history-item:hover { border-color: #6366f1; background: #161b27; }
+    .history-item.active { border-color: #6366f1; background: #1e2330; }
+    .history-date { font-size: 10px; color: #475569; display: block; margin-bottom: 4px; }
+    .history-folder { font-size: 12px; color: #e2e8f0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .history-meta { font-size: 10px; color: #64748b; margin-top: 4px; display: flex; justify-content: space-between; }
+    
+    .user-nav { display: flex; align-items: center; gap: 12px; margin-left: 16px; border-left: 1px solid #1e2330; padding-left: 16px; }
+    .user-badge { width: 28px; height: 28px; background: #6366f1; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="logo">ArticleSummary</span>
+    <span class="tagline">AI-powered PDF analysis</span>
+     <nav class="header-nav" style="display: flex; align-items: center;">
+        {% if not ai_ok or not ocr_ok %}
+          <a href="/settings" style="color: #f87171; font-size: 11px; font-weight: 700; margin-right: 16px; text-decoration: none; display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 14px;">⚠️</span> Configuration Issue Detectted
+          </a>
+        {% endif %}
+        <a href="/search/" class="nav-link" style="margin-right: 8px;">🔎 Search</a>
+        <a href="/references/" class="nav-link" style="margin-right: 8px;">📚 References</a>
+        <a href="/settings" class="nav-link">⚙ Settings</a>
+        <div class="user-nav">
+          <div class="user-badge">{{ request.user.username|slice:":1"|upper }}</div>
+          <a href="{% url 'logout' %}" class="nav-link" style="color: #f87171; border-color: rgba(239, 68, 68, 0.2);">Logout</a>
+        </div>
+      </nav>
+  </header>
+
+  <div class="layout">
+    <!-- HISTORY SIDEBAR -->
+    <aside class="history-sidebar">
+      <div class="history-header">
+        <span class="section-label">History</span>
+        <button class="btn btn-secondary" id="new-analysis-btn" style="padding: 4px 8px; font-size: 11px;">+ New</button>
+      </div>
+      <ul class="history-list" id="history-list">
+        {% for session in recent_sessions %}
+        <li class="history-item" data-id="{{ session.id }}">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+             <span class="history-date">{{ session.created_at|date:"M d, Y H:i" }}</span>
+             <button class="delete-session-btn" data-id="{{ session.id }}" style="background: none; border: none; color: #64748b; cursor: pointer; font-size: 14px; padding: 0; line-height: 1;" title="Delete session">✕</button>
+          </div>
+          {% if session.name %}
+             <div class="history-folder" style="color: #6366f1; margin-bottom: 2px;">{{ session.name }}</div>
+          {% endif %}
+          <div class="history-folder">{{ session.folder|split_path_last }}</div>
+          <div class="history-meta">
+            <span>{{ session.jobs.count }} PDFs</span>
+            <span>{{ session.jobs.filter.status|default:"done"|length }} analyzed</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </aside>
+
+    <!-- LEFT PANEL -->
+    <aside class="left-panel">
+
+      <!-- Folder selector -->
+      <div class="folder-selector">
+        <div style="margin-bottom: 12px;">
+            <label class="section-label" for="session-name-input">Session Name (Optional)</label>
+            <input type="text" id="session-name-input" placeholder="e.g. Meta-analysis 2024" style="width: 100%; padding: 8px 12px; background: #0f1117; color: #e2e8f0; border: 1px solid #2d3748; border-radius: 8px; font-size: 13px; outline: none; box-sizing: border-box;" />
+        </div>
+        <div class="folder-path" id="folder-path" style="margin-bottom: 8px;">No Zotero collection selected</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            <select id="zotero-collection-select" style="width: 100%; padding: 8px 12px; background: #1e2330; color: #e2e8f0; border: 1px solid #2d3748; border-radius: 8px; font-size: 13px; font-weight: 600; outline: none; cursor: pointer;">
+                <option value="">📚 Select Zotero Collection...</option>
+                <option value="all">All Items</option>
+            </select>
+        </div>
+      </div>
+
+      <!-- Criteria -->
+      <div class="criteria-section">
+        <label class="section-label" for="criteria-input">Research Criteria</label>
+        <textarea
+          id="criteria-input"
+          class="criteria-textarea"
+          placeholder="Describe what you are looking for in these PDFs…"
+          rows="4"
+        ></textarea>
+      </div>
+
+      <!-- PDF list -->
+      <div class="pdf-section" id="pdf-section">
+        <div class="pdf-section-header">
+          <span class="section-label">PDF Files</span>
+          <span id="dup-pill" style="display:none; background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); border-radius:10px; font-size:10px; font-weight:600; padding:2px 8px; white-space:nowrap;"></span>
+          <div class="pdf-section-actions">
+            <span class="pdf-count" id="pdf-count">0</span>
+            <span id="dup-count-pill" style="display:none; background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); border-radius:10px; font-size:10px; font-weight:600; padding:2px 8px; white-space:nowrap;"></span>
+            <button class="btn btn-primary" id="analyze-btn">
+              <span class="spinner"></span>
+              <span class="btn-label">▶ Analyze All</span>
+            </button>
+            <button class="btn btn-danger" id="stop-btn" style="display:none">■ Stop</button>
+          </div>
+        </div>
+
+        <!-- Filter tabs -->
+        <div class="filter-tabs" id="filter-tabs" style="display:none; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; gap: 4px; width: 100%;">
+            <button class="filter-tab active" data-filter="all">All <span class="filter-count" id="fc-all">0</span></button>
+            <button class="filter-tab aligned" data-filter="aligned">✓ Aligned <span class="filter-count" id="fc-aligned">0</span></button>
+            <button class="filter-tab excluded" data-filter="excluded">✗ Excluded <span class="filter-count" id="fc-excluded">0</span></button>
+            <button class="filter-tab error" data-filter="error">⚠ Error <span class="filter-count" id="fc-error">0</span></button>
+          </div>
+          <div style="display: flex; gap: 8px; width: 100%; justify-content: flex-end;">
+            <button class="btn btn-secondary" id="retry-errors-btn" style="display:none; padding: 4px 8px; font-size: 12px;">↺ Retry Failed / Cancelled</button>
+            <button class="btn btn-secondary" id="zotero-save-btn" style="display:none; padding: 4px 8px; font-size: 12px;">📥 Save to Zotero Collection</button>
+            <button class="btn btn-secondary" id="export-csv-btn" style="display:none; padding: 4px 8px; font-size: 12px;">📥 Export CSV</button>
+          </div>
+          <!-- Summary bar: shown when Zotero collection is loaded -->
+          <div class="dedup-summary" id="dedup-summary" style="display:none;">
+            <span><b id="sum-articles">0</b> articles</span>
+            <span>·</span>
+            <span><b id="sum-pdfs">0</b> PDFs</span>
+            <span>·</span>
+            <span><b id="sum-aligned">0</b> aligned</span>
+            <span id="sum-dup-wrap" style="display:none;">
+              · <span class="dup-warn">⚠ <b id="sum-dups">0</b> duplicate PDFs collapsed</span>
+            </span>
+          </div>
+        </div>
+
+        <ul class="pdf-list" id="pdf-list"></ul>
+      </div>
+
+    </aside>
+
+    <!-- RIGHT PANEL -->
+    <main class="right-panel">
+
+      <!-- Empty state -->
+      <div class="detail-empty" id="detail-empty">
+        <div class="detail-empty-icon">📄</div>
+        <p>Select a folder, enter your criteria, and click <strong>Analyze All</strong></p>
+      </div>
+
+      <!-- Detail view -->
+      <div class="detail-view" id="detail-view">
+
+        <div class="detail-header">
+          <div>
+            <h2 class="detail-title" id="detail-title">—</h2>
+            <p class="detail-filepath" id="detail-filepath"></p>
+          </div>
+          <div class="detail-header-actions">
+            <button class="btn btn-secondary" id="cited-by-btn" title="Papers citing this article (Semantic Scholar)" style="display: none;">
+              <span class="btn-label">🔗 Cited By</span>
+            </button>
+            <button class="btn btn-secondary" id="toggle-pdf-btn" title="Toggle PDF viewer">
+              <span>📄 PDF</span>
+            </button>
+            <span class="ocr-badge" id="ocr-badge"></span>
+          </div>
+        </div>
+
+        <!-- Alignment banner -->
+        <div class="alignment-banner" id="alignment-banner">
+          <span class="alignment-icon" id="alignment-icon"></span>
+          <div>
+            <strong class="alignment-verdict" id="alignment-verdict"></strong>
+            <p class="alignment-reason" id="alignment-reason"></p>
+          </div>
+        </div>
+
+        <!-- Identity fields (card grid) -->
+        <div class="field-group">
+          <h4 class="field-group-label">Identity</h4>
+          <div class="meta-grid" id="grid-identity"></div>
+        </div>
+
+        <!-- Content fields (text blocks) -->
+        <div class="field-group">
+          <h4 class="field-group-label">Content</h4>
+          <div class="text-fields" id="fields-content"></div>
+        </div>
+
+        <!-- Methodology fields -->
+        <div class="field-group">
+          <h4 class="field-group-label">Methodology</h4>
+          <div class="text-fields" id="fields-methodology"></div>
+        </div>
+
+        <!-- Findings -->
+        <div class="field-group">
+          <h4 class="field-group-label">Findings</h4>
+          <div class="text-fields" id="fields-findings"></div>
+        </div>
+
+        <!-- Cited By (Semantic Scholar forward citations) -->
+        <div class="field-group" id="cited-by-group" style="display: none;">
+          <h4 class="field-group-label" style="display: flex; align-items: center; gap: 10px;">
+            Cited By
+            <span id="cited-by-count" style="font-weight: normal; color: #64748b;"></span>
+            <span style="flex: 1;"></span>
+            <button class="btn btn-secondary" id="cited-by-sort-btn" style="font-size: 11px; padding: 4px 10px;">Year ↓</button>
+            <button class="btn btn-secondary" id="cited-by-csv-btn" style="font-size: 11px; padding: 4px 10px;">📥 CSV</button>
+          </h4>
+          <div id="cited-by-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- PDF VIEWER PANEL -->
+    <aside class="pdf-panel" id="pdf-panel">
+      <div class="pdf-header">
+        <span class="pdf-header-label">PDF Preview</span>
+        <button class="btn btn-secondary" id="close-pdf-btn" title="Close PDF viewer">✕</button>
+      </div>
+      <div class="pdf-viewer-container">
+        <div id="pdf-canvas-container"></div>
+        <div class="pdf-controls">
+          <button class="btn btn-secondary" id="pdf-prev-btn">← Prev</button>
+          <span class="pdf-page-info"><input type="number" id="pdf-page-input" min="1" value="1" /> / <span id="pdf-total-pages">1</span></span>
+          <button class="btn btn-secondary" id="pdf-next-btn">Next →</button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Zotero loading progress modal -->
+  <div id="zotero-loading-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#1a1f2e; border:1px solid #2d3748; border-radius:12px; width:440px; padding:24px; box-shadow:0 25px 50px rgba(0,0,0,0.5);">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+        <span style="font-size:20px;">📚</span>
+        <div>
+          <h3 style="font-size:15px; font-weight:600; color:#e2e8f0; margin:0;">Loading Zotero Collection</h3>
+          <p id="zl-subtitle" style="font-size:11px; color:#64748b; margin:2px 0 0;">Connecting…</p>
+        </div>
+      </div>
+      <ul id="zl-steps" style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:8px;">
+        <li class="zl-step" data-step="connecting">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text">
+            <span class="zl-label">Connecting to Zotero API</span>
+            <span class="zl-detail"></span>
+          </div>
+        </li>
+        <li class="zl-step" data-step="fetching">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text">
+            <span class="zl-label">Fetching collection items</span>
+            <span class="zl-detail"></span>
+          </div>
+        </li>
+        <li class="zl-step" data-step="metadata">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text">
+            <span class="zl-label">Building article metadata index</span>
+            <span class="zl-detail"></span>
+          </div>
+        </li>
+        <li class="zl-step" data-step="scanning">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text">
+            <span class="zl-label">Scanning local PDF storage</span>
+            <span class="zl-detail"></span>
+          </div>
+        </li>
+        <li class="zl-step" data-step="grouping">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text">
+            <span class="zl-label">Grouping &amp; sorting articles</span>
+            <span class="zl-detail"></span>
+          </div>
+        </li>
+      </ul>
+      <div id="zl-summary" style="display:none; margin-top:16px; padding:10px 12px; background:#0f1117; border-radius:8px; border:1px solid #1e2330;">
+        <p id="zl-summary-text" style="font-size:12px; color:#94a3b8; margin:0; text-align:center;"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zotero save progress modal -->
+  <div id="zotero-save-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#1a1f2e; border:1px solid #2d3748; border-radius:12px; width:480px; max-height:80vh; overflow-y:auto; padding:24px; box-shadow:0 25px 50px rgba(0,0,0,0.5);">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+        <span style="font-size:20px;">📥</span>
+        <div>
+          <h3 style="font-size:15px; font-weight:600; color:#e2e8f0; margin:0;">Saving to Zotero</h3>
+          <p id="zs-subtitle" style="font-size:11px; color:#64748b; margin:2px 0 0;">Starting…</p>
+        </div>
+      </div>
+
+      <!-- Fixed steps -->
+      <ul id="zs-steps" style="list-style:none; padding:0; margin:0 0 12px; display:flex; flex-direction:column; gap:6px;">
+        <li class="zl-step" data-step="auditing">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text"><span class="zl-label">Auditing aligned PDFs</span><span class="zl-detail"></span></div>
+        </li>
+        <li class="zl-step" data-step="connecting">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text"><span class="zl-label">Connecting to Zotero library</span><span class="zl-detail"></span></div>
+        </li>
+        <li class="zl-step" data-step="fetching">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text"><span class="zl-label">Fetching items from Zotero</span><span class="zl-detail"></span></div>
+        </li>
+        <li class="zl-step" data-step="collection">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text"><span class="zl-label">Finding / creating collection</span><span class="zl-detail"></span></div>
+        </li>
+        <li class="zl-step" data-step="resolving">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text"><span class="zl-label">Resolving parent articles</span><span class="zl-detail"></span></div>
+        </li>
+        <li class="zl-step" data-step="moving">
+          <span class="zl-icon">⏳</span>
+          <div class="zl-text"><span class="zl-label">Adding articles to collection</span><span class="zl-detail"></span></div>
+        </li>
+      </ul>
+
+      <!-- Live item feed -->
+      <div id="zs-feed" style="display:none; background:#0f1117; border:1px solid #1e2330; border-radius:8px; padding:8px 10px; max-height:160px; overflow-y:auto; margin-bottom:12px;">
+        <p style="font-size:10px; color:#475569; margin:0 0 6px; text-transform:uppercase; letter-spacing:.05em;">Articles being saved</p>
+        <ul id="zs-feed-list" style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:3px;"></ul>
+      </div>
+
+      <!-- Summary -->
+      <div id="zs-summary" style="display:none; padding:10px 12px; background:#0f1117; border-radius:8px; border:1px solid #1e2330;">
+        <p id="zs-summary-text" style="font-size:12px; color:#94a3b8; margin:0; text-align:center;"></p>
+      </div>
+      <button id="zs-close-btn" style="display:none; margin-top:14px; width:100%;" class="btn btn-secondary">Close</button>
+    </div>
+  </div>
+
+  <div id="loading-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999; align-items:center; justify-content:center; color:white;">
+    <div style="background:#1e2330; padding:20px; border-radius:10px; width:400px; text-align:center;">
+      <h3 id="modal-title">Loading Model...</h3>
+      <div style="width:100%; height:10px; background:#334155; border-radius:5px; margin:15px 0;">
+        <div id="loading-progress" style="width:0%; height:100%; background:#6366f1; border-radius:5px;"></div>
+      </div>
+      <p id="modal-status">Please wait while the model is loaded into memory.</p>
+    </div>
+  </div>
+
+  <script src="{% static 'js/pdf-viewer.js' %}?v=1.1"></script>
+  <script src="{% static 'js/main.js' %}?v=3.4"></script>
+</body>
+</html>
